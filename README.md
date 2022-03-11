@@ -31,6 +31,42 @@ subscriptionName="Visual Studio Enterprise"
 echo "Setting the subscription"
 az account set --subscription="$subscriptionName"
 
+echo "Getting the current identity's object id"
+identityObjectId=$(az ad user show --id $(az account show --query "user.name" --output tsv) \
+    --query "objectId" \
+    --output tsv)
+
+echo "Settng the location to use"
+location=uksouth
+
+echo "Creating a resource group"
+az group create \
+    --name rg-pnpjs-starter \
+    --location $location
+
+echo "Creating a key vault"
+az keyvault create \
+    --name kv-pnpjs-starter \
+    --resource-group rg-pnpjs-starter \
+    --enable-rbac-authorization
+
+echo "Assigning access to the key vault"
+az role assignment create \
+    --role "Key Vault Administrator" \
+    --assignee $(az account show \
+        --query "user.name" \
+        --output tsv) \
+    --scope $(az keyvault show \
+        --name kv-pnpjs-starter \
+        --query "id" \
+        --output tsv) 
+
+echo "Creating a certificate"
+az keyvault certificate create \
+    --name cert-pnpjs-starter \
+    --vault-name kv-pnpjs-starter \
+    --policy "$(az keyvault certificate get-default-policy)"
+
 echo "Getting if Azure AD App Registration exists"
 appPnPJSStarterAppId=$(az ad app list --query "[?displayName=='pnpjs-starter'].appId" --output tsv)
 if [[ -z $appPnPJSStarterAppId ]]; then
@@ -45,6 +81,15 @@ if [[ $appPnPJSStarterSPLength -eq "0" ]]; then
     echo "Creating the Azure AD App Registration's Service Principal"
     az ad sp create --id $appPnPJSStarterAppId
 fi
+
+echo "Adding a certificate for the Azure AD App Registration"
+az ad app credential reset \
+    --id $appPnPJSStarterAppId \
+    --cert $(az keyvault certificate show \
+        --name cert-pnpjs-starter \
+        --vault-name kv-pnpjs-starter \
+        --query "cer" \
+        --output tsv)
 
 echo "Getting the Microsoft Graph Service Principal"
 msGraphSPAppId=$(az ad sp list \
@@ -93,3 +138,4 @@ if [[ $appPnPJSStarterSPObjectIdappRoleAssignmentsLength -eq 0 ]]; then
         --url https://graph.microsoft.com/v1.0/servicePrincipals/$appPnPJSStarterSPObjectId/appRoleAssignments \
         --data "{\"principalId\":\"$appPnPJSStarterSPObjectId\", \"resourceId\":\"$msGraphSPObjectId\", \"appRoleId\":\"$msGraphSPSitesSelectedAppRoleId\"}"
 fi
+
