@@ -22,7 +22,7 @@ The default Codespace image has it available already but if not use the [Azure C
 
 ```sh
 # If you need to explicitly authenticate, e.g. using GitHub CodeSpaces
-# --use-devoce-code allows you to log on from GitHub Codespaces without port forwarding issues
+# --use-device-code allows you to log on from GitHub Codespaces without port forwarding issues
 az login --use-device-code 
 
 echo "Setting the name of the subscription"
@@ -83,9 +83,11 @@ if [[ $appPnPJSStarterSPLength -eq "0" ]]; then
 fi
 
 echo "Adding a certificate for the Azure AD App Registration"
-az ad app credential reset \
+az ad app update \
     --id $appPnPJSStarterAppId \
-    --cert $(az keyvault certificate show \
+    --key-type "AsymmetricX509Cert" \
+    --key-usage "Verify" \
+    --key-value $(az keyvault certificate show \
         --name cert-pnpjs-starter \
         --vault-name kv-pnpjs-starter \
         --query "cer" \
@@ -139,3 +141,17 @@ if [[ $appPnPJSStarterSPObjectIdappRoleAssignmentsLength -eq 0 ]]; then
         --data "{\"principalId\":\"$appPnPJSStarterSPObjectId\", \"resourceId\":\"$msGraphSPObjectId\", \"appRoleId\":\"$msGraphSPSitesSelectedAppRoleId\"}"
 fi
 
+echo "Getting the certificate as a secret"
+derBase64=$(az keyvault secret show \
+        --name cert-pnpjs-starter \
+        --vault-name kv-pnpjs-starter \
+        --query "value" \
+        --output tsv)
+
+mkdir temp
+cd temp
+openssl req -x509 -newkey rsa:2048 -keyout keytmp.pem -out cert.pem -days 365 -passout pass:HereIsMySuperPass -subj '/C=US/ST=Washington/L=Seattle'
+openssl rsa -in keytmp.pem -out key.pem -passin pass:HereIsMySuperPass
+
+az ad app credential reset --id d8f467b5-1067-4cc8-ba19-c10414087520 --cert "@temp/cert.pem"
+```
